@@ -1,0 +1,160 @@
+
+#"Feasibility analysis of Yahoo acquistion of Tumblr"
+#date: "January 15, 2019"
+#Author: SingRs (ASHRAF Shahan, BRITO DA FONSECA Fabio, HARRIS Alana, MILENKOV Dimitar, OBOLONSKYI Misha)
+
+library(forecast)
+library(fpp)
+library(xts)
+library(scales)
+
+
+##Deliverables
+#- What was the average monthly growth rate in the number of people worldwide accessing Tumblr site since its inception (over the last 37 months)?
+#- How does it compare to the average monthly growth rate over the past 12 months?
+#- What are the valuations of Tumblr given these two growth rates?
+#- Use the data provided to forecast the number of people worldwide accessing Tumblr's site for the next 115 months (June 2013 - Dec 2022).
+#- Given your forecast, revise the valuation of Tumblr (case Exhibit 5, valuation spreadsheet).
+
+##Table of Context
+
+#1.Reading data  
+#2.Average growth rates  
+#3.Valuation comparisons  
+#4.Decomposing data  
+#5.Forecasting  
+#6.TBATS  
+#7.Arima  
+
+
+##Reading data  
+
+tumblr_visitors <- read.csv(file.choose(), header=TRUE, sep=",")
+tumblr_visitors_ts <- ts(tumblr_visitors$People, start = c(2010, 04), frequency = 12)
+
+
+##Explonatory analysis (1/2)
+
+summary(tumblr_visitors_ts)
+head(tumblr_visitors_ts[1:5])
+tail(tumblr_visitors_ts[34:38])
+
+
+##Explonatory analysis (2/2)
+
+plot(as.xts(tumblr_visitors_ts/1000000), ylab="Millions of visitors on Tumblr website",
+     major.format = "%Y-%m", main="Tumblr monthly users, mln")
+
+
+##Average growth rates over the past 37 vs 12 months
+#- Growth rate for the past 37 months
+
+growth_rates_cagr_37 <- (tumblr_visitors_ts[38]/tumblr_visitors_ts[1])^(1/38)-1
+
+#Growth rate for the past 12 months
+
+growth_rates_cagr_12 <- (tumblr_visitors_ts[38]/tumblr_visitors_ts[38-12])^(1/12)-1
+
+#creating matrix for comparison
+
+val_sensitivy <- data.frame("Growth rate" = c(growth_rates_cagr_12, growth_rates_cagr_37),
+                            "Valuation"=as.numeric(c("1.23","54.8")))
+
+
+##Tumblr valuation dependeding on people growth rate
+
+val <- barplot(val_sensitivy$Valuation, names.arg = percent(val_sensitivy$Growth.rate),
+               xlab = "Growth rates", ylab = "Valuation of Tumblr, bln USD", ylim = c(0,60))
+text(x=val, y=val_sensitivy$Valuation, labels=as.character(val_sensitivy$Valuation), 
+     pos = 3, cex = 1)
+
+
+##Decomposition of Tumblr visitors - Multiplicative
+
+fit <- decompose(tumblr_visitors_ts, type="multiplicative") 
+plot(fit)
+
+
+##Decomposition of Tumblr visitors - Additive
+
+fit <- decompose(tumblr_visitors_ts, type="additive") 
+plot(fit)
+
+
+##Decomposition of Tumblr visitors - STL (Season and trend using Loess)
+
+fit <- stl(tumblr_visitors_ts, t.window=12, s.window="periodic") 
+plot(fit)
+
+
+
+##Modelling
+#### Create exponential smoothing models: additive vs multiplicative noise (first A vs M), additive vs multiplicative trend (second A vs M) and no seasonality vs automatic detection (third N vs Z) trend and no seasonlity (AAN), multiplicative (MMN)
+
+TumblrPeople_AAN <- ets(tumblr_visitors_ts, model="AAN", damped=FALSE)
+TumblrPeople_AAZ <- ets(tumblr_visitors_ts, model="AAZ", damped=FALSE)
+TumblrPeople_MMN <- ets(tumblr_visitors_ts, model="MMN", damped=FALSE)
+TumblrPeople_MMZ <- ets(tumblr_visitors_ts, model="MMZ", damped=FALSE)
+TumblrPeople_AAN_D <- ets(tumblr_visitors_ts, model="AAN", damped=TRUE)
+TumblrPeople_AAZ_D <- ets(tumblr_visitors_ts, model="AAZ", damped=TRUE)
+TumblrPeople_MMN_D <- ets(tumblr_visitors_ts, model="MMN", damped=TRUE)
+TumblrPeople_MMZ_D <- ets(tumblr_visitors_ts, model="MMZ", damped=TRUE)
+TumblrPeople_ZZZ <- ets(tumblr_visitors_ts, model="MMZ", damped=FALSE)
+TumblrPeople_ZZZ_D <- ets(tumblr_visitors_ts, model="MMZ", damped=TRUE)
+
+
+#### Create their prediction "cones" for 115 months into the future with quintile confidence intervals
+
+TumblrPeople_AAN_pred <- forecast(TumblrPeople_AAN, h=115, level=c(0.8, 0.95))
+TumblrPeople_AAZ_pred <- forecast(TumblrPeople_AAZ, h=115, level=c(0.8, 0.95))
+TumblrPeople_MMN_pred <- forecast(TumblrPeople_MMN, h=115, level=c(0.8, 0.95))
+TumblrPeople_MMZ_pred <- forecast(TumblrPeople_MMZ, h=115, level=c(0.8, 0.95))
+TumblrPeople_AAN_D_pred <- forecast(TumblrPeople_AAN_D, h=115, level=c(0.8, 0.95))
+TumblrPeople_AAZ_D_pred <- forecast(TumblrPeople_AAZ_D, h=115, level=c(0.8, 0.95))
+TumblrPeople_MMN_D_pred <- forecast(TumblrPeople_MMN_D, h=115, level=c(0.8, 0.95))
+TumblrPeople_MMZ_D_pred <- forecast(TumblrPeople_MMZ_D, h=115, level=c(0.8, 0.95))
+TumblrPeople_ZZZ_pred <- forecast(TumblrPeople_MMN_D, h=115, level=c(0.8, 0.95))
+TumblrPeople_ZZZ_D_pred <- forecast(TumblrPeople_MMZ_D, h=115, level=c(0.8, 0.95))
+
+
+##Compare the prediction "cones" visually
+
+par(mfrow=c(2,4)) # This command sets the plot window to show 1 row of 4 plots
+plot(TumblrPeople_AAN_pred, xlab="Year", ylab="Predicted Growth", ylim=c(1,700000000))
+plot(TumblrPeople_AAZ_pred, xlab="Year", ylab="Predicted Growth", ylim=c(1,700000000))
+plot(TumblrPeople_AAN_D_pred, xlab="Year", ylab="Predicted Growth",ylim=c(1,700000000))
+plot(TumblrPeople_MMN_D_pred, xlab="Year", ylab="Predicted Growth",ylim=c(1,700000000))
+plot(TumblrPeople_AAZ_D_pred, xlab="Year", ylab="Predicted Growth",ylim=c(1,700000000))
+plot(TumblrPeople_MMZ_D_pred, xlab="Year", ylab="Predicted Growth",ylim=c(1,700000000))
+plot(TumblrPeople_ZZZ_pred, xlab="Year", ylab="Predicted Growth",ylim=c(1,700000000))
+plot(TumblrPeople_ZZZ_D_pred, xlab="Year", ylab="Predicted Growth",ylim=c(1,700000000))
+
+
+##Trigonometric box-cox autoregressive trend seasonality (TBATS) model
+
+tumblr_visitors_tbats <- tbats(tumblr_visitors_ts)
+tumblr_visitors_tbats_pred <-forecast(tumblr_visitors_tbats, h=115, level=c(0.8, 0.95))
+par(mfrow=c(1,1))
+plot(tumblr_visitors_tbats_pred, xlab="Year")
+
+
+
+##Arima
+
+fit_non_seasonal <- auto.arima(tumblr_visitors_ts,seasonal=FALSE)
+fit_seasonal <-auto.arima(tumblr_visitors_ts,seasonal=TRUE)
+
+#automatically fits the ARIMA model (auto-regressive integrated moving average)
+par(mfrow=c(1,2))
+Acf(residuals(fit_non_seasonal))
+acf(residuals(fit_seasonal))
+
+
+##Arima plots
+
+par(mfrow=c(1,2))
+tumblr_visitors_arima_nonseasonal_pred <- forecast(fit_non_seasonal,115)
+plot(tumblr_visitors_arima_nonseasonal_pred)
+
+tumblr_visitors_arima_seasonal_pred <- forecast(fit_seasonal,115)
+plot(tumblr_visitors_arima_seasonal_pred)
